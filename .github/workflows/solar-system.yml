@@ -1,4 +1,4 @@
-name: Solar System Workflow
+name: Solar System Workflow #this will ask for approval to move to production
 
 on: 
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     branches:
       - main
       - 'feature/*'
-    
+
 jobs:
   unit-testing:
     name: Unit Testing
@@ -32,10 +32,10 @@ jobs:
         name: Mocha-Test-Result
         path: test-results.xml
 
-  deploy:
-    name: Deploy to Kubernetes
+  deploy-staging:
+    name: Deploy to Staging
     runs-on: ubuntu-latest
-    needs: unit-testing  # This ensures the deploy job runs only after unit-testing job completes
+    needs: unit-testing  # This ensures the deploy-staging job runs only after unit-testing job completes
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
@@ -48,12 +48,39 @@ jobs:
     - name: Set up Kubeconfig
       run: |
         mkdir -p ~/.kube
-        echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
+        echo "${{ secrets.STAGING_KUBE_CONFIG }}" > ~/.kube/config
 
-    - name: Deploy to Kubernetes
+    - name: Deploy to Staging
       run: |
-        kubectl apply -f k8s/deployment.yaml
-        kubectl apply -f k8s/service.yaml
+        kubectl apply -f k8s/staging/deployment.yaml
+        kubectl apply -f k8s/staging/service.yaml
 
-    - name: Verify Deployment
-      run: kubectl rollout status deployment/your-deployment-name
+    - name: Verify Staging Deployment
+      run: kubectl rollout status deployment/your-staging-deployment-name
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging  # This ensures the deploy-production job runs only after deploy-staging job completes successfully
+    if: github.event_name == 'workflow_dispatch'  # Only run when manually triggered
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup Kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: Set up Kubeconfig
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.PRODUCTION_KUBE_CONFIG }}" > ~/.kube/config
+
+    - name: Deploy to Production
+      run: |
+        kubectl apply -f k8s/production/deployment.yaml
+        kubectl apply -f k8s/production/service.yaml
+
+    - name: Verify Production Deployment
+      run: kubectl rollout status deployment/your-production-deployment-name
